@@ -1,0 +1,3 @@
+git+https://github.com/revoltchat/revolt.py
+pymongo
+python-dotenv
