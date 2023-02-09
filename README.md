@@ -24,7 +24,7 @@ cd Revower
 
 # *EDIT ENV VARS*
 
-python3 main.py
+python3 src/main.py
 ```
 
 Or you can deploy with docker!
@@ -37,8 +37,6 @@ cd Revower
 
 docker compose build
 docker-compose up -d
-# OR
-screen -dmS Revower "docker-compose up"
 ```
 
 

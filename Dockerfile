@@ -1,6 +1,6 @@
 FROM python:3.10
 
-ADD main.py /
+ADD src/main.py /
 ADD requirements.txt /
 
 RUN pip install -r requirements.txt
