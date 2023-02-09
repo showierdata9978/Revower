@@ -18,10 +18,28 @@ A Bridge from meower to revolt.
 To deploy this project run
 
 ```bash
- python3 main.py
+git clone https://github.com/showierdata9978/Revower.git
+
+cd Revower
+
+# *EDIT ENV VARS*
+
+python3 main.py
 ```
 
+Or you can deploy with docker!
 
+```bash
+git clone https://github.com/showierdata9978/Revower.git
+cd Revower
+
+# *EDIT ENV VARS*
+
+docker compose build
+docker-compose up -d
+# OR
+screen -dmS Revower "docker-compose up"
+```
 
 
 ## Environment Variables
