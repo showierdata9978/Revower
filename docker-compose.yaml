@@ -1,9 +1,15 @@
+
 services:
   bot:
-    build: 
+    build:
       context: ./
+      platforms:
+        - windows/amd64
+        - windows/amd64
+        - linux/amd64
+        - linux/arm64/v8  
 
-    image: revower
+    image: showierdata9978/revower
     volumes:
       - ./.env:/.env:mount
     depends_on:
