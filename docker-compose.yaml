@@ -1,0 +1,18 @@
+services:
+  bot:
+    build: 
+      context: ./
+
+    image: revower
+    volumes:
+      - ./.env:/.env:mount
+    depends_on:
+      - mongo
+  
+  mongo:
+    image: mongo
+    restart: always
+    volumes:
+      - type: bind
+        source: ./db/
+        target: /data/db
