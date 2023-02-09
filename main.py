@@ -33,7 +33,7 @@ async def send_revolt_message(message: Post, chat_id: str):
     if type(chat) is not TextChannel:
         return
     try:
-        await chat.send(content=str(message), masquerade=Masquerade(name=message.user.username, avatar=f"https://assets.meower.org/PFPS/{message.user.pfp}"))
+        await chat.send(content=str(message), masquerade=Masquerade(name=message.user.username, avatar=f"https://assets.meower.org/PFP/{message.user.pfp}.svg"))
     except revolt_pkg.errors.HTTPError:
         MEOWER.send_msg("Failed to send message to revolt channel")
 
