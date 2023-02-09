@@ -9,13 +9,17 @@ import asyncio
 import aiohttp
 import pymongo
 import threading
+import logging
+from json import loads
+logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 
 MEOWER_USERNAME = dotenv_values()["meower_username"]
 MEOWER_PASSWORD = dotenv_values()["meower_password"]
 REVOLT_TOKEN = dotenv_values()["revolt_token"]
-DATABASE = pymongo.MongoClient(dotenv_values().get("mongo_url", "mongodb://localhost:27017"))["revolt-meower"]
+DATABASE = pymongo.MongoClient(dotenv_values().get(
+    "mongo_url", "mongodb://localhost:27017"))["revolt-meower"]
 
 # check if the environment variables are set
 if not MEOWER_USERNAME or not MEOWER_PASSWORD or not REVOLT_TOKEN:
@@ -24,12 +28,18 @@ if not MEOWER_USERNAME or not MEOWER_PASSWORD or not REVOLT_TOKEN:
 
 MEOWER = Bot(autoreload=0)
 LINKING_USERS = {}
-
+LINKING_CHATS = {}
+BYPASS_CHAT_LINKING = str(dotenv_values().get("bypass_chat_linking", False)) == "True"
 
 async def send_revolt_message(message: Post, chat_id: str):
     # send the message to the revolt channel
-    chat: TextChannel = await revolt.fetch_channel(chat_id)  # type: ignore
-
+    try:
+        chat: TextChannel = await revolt.fetch_channel(chat_id)  # type: ignore
+    except revolt_pkg.errors.HTTPError:
+        # the channel doesnt exist, so remove it from the database
+        DATABASE.chats.delete_one({"revolt_chat": chat_id})
+        return
+    
     if type(chat) is not TextChannel:
         return
     try:
@@ -38,29 +48,90 @@ async def send_revolt_message(message: Post, chat_id: str):
         MEOWER.send_msg("Failed to send message to revolt channel")
 
 
+def handle_raw(packet, *args, **kwargs):
+    if type(packet) == str:
+        return
+
+    if "payload" not in packet['val']:
+        return
+
+    if not packet['val']['mode'] == "chat_data":
+        return
+
+    if not packet['val']['payload']['chatid'] in LINKING_CHATS:
+        MEOWER.send_msg(
+            "This chat is not being linked", to=packet['val']['payload']['chatid'])
+        
+        return
+
+    chat = LINKING_CHATS[packet['val']['payload']['chatid']]
+
+    chat['info'] = packet['val']['payload']
+
+    if chat['info']['owner'] == chat['user'] and not BYPASS_CHAT_LINKING:
+        MEOWER.send_msg(
+            "You dont have perms to link this groupchat", to=packet['val']['payload']['chatid'])
+        return
+
+    # link the chats
+    print(type(chat['revolt_chat'].id))
+    DATABASE.chats.insert_one(
+        {"meower_chat": chat["meower_chat"], "revolt_chat": str(chat['revolt_chat'].id)})
+    
+    MEOWER.send_msg(
+        "Linked the chats", to=chat['meower_chat'])
+    
+    loop.create_task(chat['revolt_chat'].send(content=f"Successfully linked with {chat['meower_chat']}"))
+
+
 def on_message_meower(message: Post, bot=MEOWER):
     if message.user.username == MEOWER_USERNAME:
         return
 
-    if str(message).startswith(f"@{MEOWER_USERNAME} link "):
+    if str(message).startswith(f"@{MEOWER_USERNAME} "):
         # check if the user is linking a revolt account
-        args = str(message).split(" ")[2:]
-        revolt_user = args.pop(0)
+        args = str(message).split(" ")[1:]
+        cmd = args.pop(0)
+        if cmd == "account":
+            revolt_user = args.pop(0)
 
-        if revolt_user not in LINKING_USERS:
-            message.ctx.reply("You are not linking a revolt account")
+            if revolt_user not in LINKING_USERS:
+                message.ctx.reply("You are not linking a revolt account")
+                return
+
+            # check if the revolt user is the same as the one that started the linking
+            if LINKING_USERS[revolt_user]['meower_username'] != message.user.username:
+                message.ctx.reply("You are not linking your revolt account")
+                return
+
+            # insert the user into the database
+            DATABASE.users.insert_one(
+                {"meower_username": message.user.username, "revolt_user": revolt_user, "pfp": message.user.pfp})
+            message.ctx.reply("Successfully linked your revolt account")
             return
+        elif cmd == "link":
+            chat_id = message.chat
 
-        # check if the revolt user is the same as the one that started the linking
-        if LINKING_USERS[revolt_user]['meower_username'] != message.user.username:
-            message.ctx.reply("You are not linking your revolt account")
+            if chat_id not in LINKING_CHATS:
+                message.ctx.reply("You are not linking a revolt channel")
+                return
+
+            # check if the revolt user is the same as the one that started the linking, and has permission to link the channel (ie. owns the chat)
+            chat_linking = LINKING_CHATS[chat_id]
+            if chat_linking['meower_chat'] != message.chat:
+                message.ctx.reply(
+                    "Please run the command in the  gc you want to link")
+                return
+
+            LINKING_CHATS[chat_id]['user'] = message.user.username
+            MEOWER.wss.sendPacket({
+                "cmd": "direct",
+                "val": {
+                    "cmd": "get_chat_data",
+                    "val": f"{message.chat}"
+                }
+            })
             return
-
-        # insert the user into the database
-        DATABASE.users.insert_one(
-            {"meower_username": message.user.username, "revolt_user": revolt_user, "pfp": message.user.pfp})
-        message.ctx.reply("Successfully linked your revolt account")
-        return
 
     # check if a message is in a known revolt channel
     chats = DATABASE.chats.find({"meower_chat": message.chat})
@@ -86,8 +157,6 @@ async def send_to_chat(chat: str, post: Message):
 
 
 async def on_message(message: Message):
-    print(str(message.content))
-
     # check if the message is sent by a bot
     if message.author.bot:
         return
@@ -112,14 +181,19 @@ async def on_message(message: Message):
             await message.channel.send(content=f"Please send @{MEOWER_USERNAME} link {message.author.id} to livechat")
             return
         elif command == "link":
-            ALLOWED_CHATS = [
+            DEFAULT_CHATS = [
                 "livechat",
                 "home"
             ]
 
             chat = args.pop(0)
-            if chat not in ALLOWED_CHATS:
-                await message.channel.send(content=f"You can only link this channel to {','.join(ALLOWED_CHATS)}")
+            if chat not in DEFAULT_CHATS:
+                LINKING_CHATS[chat] = {
+                    "meower_chat": chat,
+                    "revolt_chat": message.channel,
+                    "chat_info": None
+                }
+                await message.channel.send(content=f"Please send @{MEOWER_USERNAME} link to the specified chat")
                 return
 
             # add the chat to the database
@@ -177,7 +251,7 @@ class RevoltClient(Client):
 
 
 MEOWER.callback(on_message_meower, "message")
-
+MEOWER.callback(handle_raw, "__raw__")
 
 async def main():
     global revolt
