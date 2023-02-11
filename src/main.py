@@ -11,9 +11,14 @@ import pymongo
 import threading
 import logging
 from json import loads
+from cachetools import TTLCache, cached as cached_sync
+from asyncache import cached
+
+import requests
 logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
+
 
 MEOWER_USERNAME = dotenv_values()["meower_username"]
 MEOWER_PASSWORD = dotenv_values()["meower_password"]
@@ -25,13 +30,14 @@ DATABASE = pymongo.MongoClient(dotenv_values().get(
 if not MEOWER_USERNAME or not MEOWER_PASSWORD or not REVOLT_TOKEN:
     raise ValueError("Environment variables not set")
 
+PFPEXISTS = TTLCache(maxsize=1000, ttl=60*60*24*7) # cache for 7 days
 
 MEOWER = Bot(autoreload=0)
 LINKING_USERS = {}
 LINKING_CHATS = {}
 BYPASS_CHAT_LINKING = str(dotenv_values().get("bypass_chat_linking", False)) == "True"
 
-async def send_revolt_message(message: Post, chat_id: str):
+async def send_revolt_message(message: Post, chat_id: str, pfp):
     # send the message to the revolt channel
     try:
         chat: TextChannel = await revolt.fetch_channel(chat_id)  # type: ignore
@@ -43,9 +49,53 @@ async def send_revolt_message(message: Post, chat_id: str):
     if type(chat) is not TextChannel:
         return
     try:
-        await chat.send(content=str(message), masquerade=Masquerade(name=message.user.username, avatar=f"https://assets.meower.org/PFP/{message.user.pfp}.svg"))
+        await chat.send(content=str(message), masquerade=Masquerade(name=message.user.username, avatar=await pfp_uri(message.user.pfp)))
     except revolt_pkg.errors.HTTPError:
         MEOWER.send_msg("Failed to send message to revolt channel")
+
+@cached(PFPEXISTS)
+async def pfp_uri(pfp: int) -> str:
+    #https://showierdata9978.github.io/Revower/pfps/{user['pfp']}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"https://showierdata9978.github.io/Revower/pfps/icon_{pfp}.png") as resp:
+            if resp.status == 200:
+                return f"https://showierdata9978.github.io/Revower/pfps/icon_{pfp}.png"
+            else:
+                return "https://showierdata9978.github.io/Revower/pfps/icon_err.png"
+            
+User_pfp =  TTLCache(maxsize=1000, ttl=60*60*24*7) # cache for 7 days
+
+@cached(User_pfp)
+async def get_user_pfp(username: str) -> str:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"https://api.meower.org/users/{username}") as resp:
+            try:
+                user = await resp.json()
+                return user['pfp_data']
+            except Exception as e:
+                print(e)
+                return "err"
+            
+#sync version of the 2 functions above
+@cached_sync(PFPEXISTS)
+def get_user_pfp_sync(username: str) -> str:
+    resp = requests.get(f"https://api.meower.org/users/{username}")
+    try:
+        user = resp.json()
+        return user['pfp_data']
+    except Exception as e:
+                print(e)
+                return "err"
+    
+@cached_sync(User_pfp)
+def pfp_uri_sync(pfp: int) -> str:
+    resp = requests.get(f"https://showierdata9978.github.io/Revower/pfps/icon_{pfp}.png")
+    if resp.status_code == 200:
+        return f"https://showierdata9978.github.io/Revower/pfps/icon_{pfp}.png"
+    else:
+        return "https://showierdata9978.github.io/Revower/pfps/icon_err.png"
+
+
 
 
 def handle_raw(packet, *args, **kwargs):
@@ -106,7 +156,7 @@ def on_message_meower(message: Post, bot=MEOWER):
 
             # insert the user into the database
             DATABASE.users.insert_one(
-                {"meower_username": message.user.username, "revolt_user": revolt_user, "pfp": message.user.pfp})
+                {"meower_username": message.user.username, "revolt_user": revolt_user, "pfp": get_user_pfp_sync(LINKING_USERS[revolt_user]['meower_username'])})
             message.ctx.reply("Successfully linked your revolt account")
             return
         elif cmd == "link":
@@ -139,12 +189,15 @@ def on_message_meower(message: Post, bot=MEOWER):
     if chats is None:
         return
 
+    pfp = pfp_uri_sync(get_user_pfp_sync(message.user.username)) #type: ignore
+
     # send the message to the revolt channel
     for chat in chats:
-        loop.create_task(send_revolt_message(message, chat["revolt_chat"]))
+        loop.create_task(send_revolt_message(message, chat["revolt_chat"], pfp))
+    
 
 
-async def send_to_chat(chat: str, post: Message):
+async def send_to_chat(chat: str, post: Message, pfp: str):
     channel = await revolt.fetch_channel(chat)
     if type(channel) is not TextChannel:
         return
@@ -153,7 +206,7 @@ async def send_to_chat(chat: str, post: Message):
     if user is None:
         return
 
-    await channel.send(content=str(post.content), masquerade=Masquerade(name=user["meower_username"], avatar=f"https://showierdata9978.github.io/Revower/pfps/icon_{user['pfp']}.png"))
+    await channel.send(content=str(post.content), masquerade=Masquerade(name=user["meower_username"], avatar=f"{pfp}"))
 
 
 async def on_message(message: Message):
@@ -163,6 +216,8 @@ async def on_message(message: Message):
 
     # check if the user has linked a meower account
     user = DATABASE.users.find_one({"revolt_user": message.author.id})
+    musr = user
+
 
     # check if the message is a command
     if str(message.content).startswith(revolt.user.mention):
@@ -216,8 +271,7 @@ async def on_message(message: Message):
         return
     # send the message to the meower channel
     content = f"{str(message.content)}"
-
-
+    if musr is None: return
 
     for message_id in message.reply_ids:
         try:
@@ -276,8 +330,10 @@ async def on_message(message: Message):
     # remove the original chat from the list
 
     tasks = []
+    pfp = await pfp_uri(await get_user_pfp(message.author.name)) # type: ignore
+
     for chat in chats:  # type: ignore
-        tasks.append(send_to_chat(chat["revolt_chat"], message))
+        tasks.append(send_to_chat(chat["revolt_chat"], message, pfp))
 
     await asyncio.gather(*tasks)
 
