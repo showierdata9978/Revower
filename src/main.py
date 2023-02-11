@@ -153,7 +153,7 @@ async def send_to_chat(chat: str, post: Message):
     if user is None:
         return
 
-    await channel.send(content=str(post.content), masquerade=Masquerade(name=user["meower_username"], avatar=f"https://showierdata9978.github.io/Revower/pfps/{user['pfp']}"))
+    await channel.send(content=str(post.content), masquerade=Masquerade(name=user["meower_username"], avatar=f"https://showierdata9978.github.io/Revower/pfps/icon_{user['pfp']}.png"))
 
 
 async def on_message(message: Message):
