@@ -178,7 +178,7 @@ async def on_message(message: Message):
                 "revolt_chat": message.channel.id
             }
 
-            await message.channel.send(content=f"Please send @{MEOWER_USERNAME} link {message.author.id} to livechat")
+            await message.channel.send(content=f"Please send @{MEOWER_USERNAME} account {message.author.id} to livechat")
             return
         elif command == "link":
             DEFAULT_CHATS = [
@@ -209,17 +209,61 @@ async def on_message(message: Message):
         return
 
     if user is None:
-        await message.add_reaction("❌")
+        try:
+            await message.add_reaction("❌")
+        except revolt_pkg.errors.HTTPError:
+            print("Failed to add '❌' reaction")
         return
     # send the message to the meower channel
+    content = f"{str(message.content)}"
+
+
+
+    for message_id in message.reply_ids:
+        try:
+            reply =  revolt.get_message(message_id)
+        except LookupError:
+            reply = await message.channel.fetch_message(message_id)
+        
+        user = reply.author
+        if user.id == revolt.user.id:
+            #add the reply username to the message
+            content = f"@{user.name} {content}"
+            continue
+
+        user_D = DATABASE.users.find_one({"revolt_user": user.id})
+        if user_D is None:
+            #replace the ping with <Unknown User>
+            content = f"@<Unknown User> {content}"
+            continue
+
+        content = f"@{user_D['meower_username']} {content}"
+
+    for author in message.mentions:
+
+        if author.id == revolt.user.id:
+            #add the reply username to the message
+            content = content.replace(f"@{author.mention}", f"@{author.name}")
+            continue
+
+
+        user_D = DATABASE.users.find_one({"revolt_user": author.id})
+        if user_D is None:
+            #replace the ping with <Unknown User>
+            content = content.replace(f"{author.mention}", "<Unknown User>")
+            continue
+
+        content = content.replace(f"{author.mention}", f"@{user_D['meower_username']}")
+
+    content = f" {message.author.name}: " + content
 
     MEOWER.send_msg(
-        f"{user['meower_username']}: {str(message.content)}", db_chat["meower_chat"])
+        content, db_chat["meower_chat"])
 
     try:
         await message.add_reaction("✅")
     except revolt_pkg.errors.HTTPError:
-        print("Failed to add reaction")
+        print("Failed to add '✅' reaction")
 
     chats = DATABASE.chats.find({"meower_chat": db_chat["meower_chat"]}) or []
     chats = list(chats)
@@ -258,7 +302,7 @@ async def main():
     global loop
     loop = asyncio.get_event_loop()
 
-    async with revolt_pkg.utils.client_session() as session:
+    async with revolt_pkg.utils.client_session() as session: # type: ignore
         revolt = RevoltClient(session, REVOLT_TOKEN)
         threading.Thread(target=MEOWER.run, args=(
             MEOWER_USERNAME, MEOWER_PASSWORD)).start()
