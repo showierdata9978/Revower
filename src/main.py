@@ -353,6 +353,12 @@ class RevoltClient(Client):
 MEOWER.callback(on_message_meower, "message")
 MEOWER.callback(handle_raw, "__raw__")
 
+def meower_main():
+    while True:
+        MEOWER.run(MEOWER_USERNAME, MEOWER_PASSWORD)
+        
+
+
 async def main():
     global revolt
     global loop
@@ -360,9 +366,10 @@ async def main():
 
     async with revolt_pkg.utils.client_session() as session: # type: ignore
         revolt = RevoltClient(session, REVOLT_TOKEN)
-        threading.Thread(target=MEOWER.run, args=(
-            MEOWER_USERNAME, MEOWER_PASSWORD)).start()
-        await revolt.start()
+        threading.Thread(target=meower_main).start()
+        
+        while True:
+            await revolt.start()
 
 
 asyncio.run(main())
