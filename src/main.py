@@ -13,7 +13,7 @@ import logging
 from json import loads
 from cachetools import TTLCache, cached as cached_sync
 from asyncache import cached
-
+import aiohttp
 import requests
 logging.basicConfig(level=logging.INFO)
 
@@ -23,6 +23,8 @@ load_dotenv()
 MEOWER_USERNAME = dotenv_values()["meower_username"]
 MEOWER_PASSWORD = dotenv_values()["meower_password"]
 REVOLT_TOKEN = dotenv_values()["revolt_token"]
+LINK_SHORTENER_KEY = dotenv_values()["url_shortener_token"]
+
 DATABASE = pymongo.MongoClient(dotenv_values().get(
     "mongo_url", "mongodb://localhost:27017"))["revolt-meower"]
 
@@ -278,7 +280,7 @@ async def on_message(message: Message):
 
     if user is None:
         try:
-            await message.add_reaction("❌")
+            await message.add_reaction(":x:")
         except revolt_pkg.errors.HTTPError:
             print("Failed to add '❌' reaction")
         return
@@ -322,6 +324,16 @@ async def on_message(message: Message):
 
         content = content.replace(
             f"{author.mention}", f"@{user_D['meower_username']}")
+
+    #get all of the attachmen
+    for attachment in message.attachments:
+        #shorten the url with go.meower.org
+        async with aiohttp.request("POST", "https://go.meower.org/submit", json={"link": attachment.url}, headers={"Authorization": LINK_SHORTENER_KEY}) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                content = f"[{attachment.filename}: {data['full_url']}] {content}"
+            else:
+                content = f"[{attachment.filename}: {attachment.url}] {content}"
 
     content = f" {message.author.name}: " + content
 
