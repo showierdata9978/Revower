@@ -112,6 +112,9 @@ def pfp_uri_sync(pfp: int) -> str:
     else:
         return "https://showierdata9978.github.io/Revower/pfps/icon_err.png"
 
+def ban_user(meower_username: str):
+    return DATABASE.users.update_one({"meower_username": meower_username}, {"$set": {"banned": True}}).modified_count > 0
+
 
 def handle_raw(packet, *args, **kwargs):
     if type(packet) == str:
@@ -241,10 +244,21 @@ async def on_message(message: Message):
         command = args.pop(0)
 
         if command == "account":
+            #get the revolt account in the db, to check if the user is banned
+            muser = args.pop(0)
+            user = DATABASE.users.find_one({"revolt_user": message.author.id})
+            if user is None:
+                user = DATABASE.users.find_one({"meower_username": muser})
+
+            if user is not None and user.get("banned", False):
+                await message.channel.send(content="You are banned from using this bot")
+                return
+            
+
 
             LINKING_USERS[message.author.id] = {
                 "revolt_user": message.author.id,
-                "meower_username": args.pop(0),
+                "meower_username": muser,
                 "revolt_chat": message.channel.id
             }
 
@@ -271,6 +285,28 @@ async def on_message(message: Message):
                 {"meower_chat": chat, "revolt_chat": message.channel.id})
             await message.channel.send(content=f"Successfully linked this channel to {chat}")
             return
+        elif command == "ban":
+            
+            role = message.server.get_role("01GRR3PQES9SMJFNQSMFZNCDAH")
+            
+            if  role not in message.author.roles:
+                await message.channel.send(content="You do not have permission to use this command")
+                return
+            
+            user = args.pop(0)
+
+            #optionally, add a reason
+            reason = None
+            if len(args) > 0:
+                reason = " ".join(args)
+            
+            if ban_user(user):
+                await message.channel.send(content=f"Successfully banned {user}")
+                return
+            
+            await message.channel.send(content=f"Failed to ban {user}")
+
+
 
     # check if the message is in a known revolt channel
     db_chat = DATABASE.chats.find_one({"revolt_chat": message.channel.id})
@@ -284,6 +320,14 @@ async def on_message(message: Message):
         except revolt_pkg.errors.HTTPError:
             print("Failed to add '❌' reaction")
         return
+
+    if user.get("banned", False):
+        try:
+            await message.add_reaction(":x:")
+        except revolt_pkg.errors.HTTPError:
+            print("Failed to add '❌' reaction")
+        return
+
     # send the message to the meower channel
     content = f"{str(message.content)}"
     if musr is None:
