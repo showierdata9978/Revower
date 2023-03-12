@@ -379,7 +379,7 @@ async def on_message(message: Message):
             else:
                 content = f"[{attachment.filename}: {attachment.url}] {content}"
 
-    content = f" {message.author.name}: " + content
+    content = f"{message.author.name}: " + content
 
     MEOWER.send_msg(
         content, db_chat["meower_chat"])
