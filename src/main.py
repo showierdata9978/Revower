@@ -58,8 +58,7 @@ async def send_revolt_message(message: Post, chat_id: str, pfp):
     try:
         await chat.send(content=str(message), masquerade=Masquerade(name=message.user.username, avatar=await pfp_uri(message.user.pfp)))
     except revolt_pkg.errors.HTTPError:
-        MEOWER.send_msg("Failed to send message to revolt channel")
-
+        pass
 
 @cached(PFPEXISTS)
 async def pfp_uri(pfp: int) -> str:
