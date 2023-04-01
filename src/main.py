@@ -234,7 +234,7 @@ async def on_message(message: Message):
 
     # check if the user has linked a meower account
     user = DATABASE.users.find_one({"revolt_user": message.author.id})
-    musr = user
+    musr: dict = user
 
     # check if the message is a command
     if str(message.content).startswith(revolt.user.mention):
@@ -378,7 +378,7 @@ async def on_message(message: Message):
             else:
                 content = f"[{attachment.filename}: {attachment.url}] {content}"
 
-    content = f"{message.author.name}: " + content
+    content = f"{muser['meower_username']}: " + content
 
     MEOWER.send_msg(
         content, db_chat["meower_chat"])
