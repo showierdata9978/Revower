@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dotenv import dotenv_values, load_dotenv
+import re
 
 from MeowerBot import Bot
 from MeowerBot.context import CTX, Post
@@ -15,7 +16,7 @@ from cachetools import TTLCache, cached as cached_sync
 from asyncache import cached
 import aiohttp
 import requests
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 load_dotenv()
 
@@ -24,6 +25,9 @@ MEOWER_USERNAME = dotenv_values()["meower_username"]
 MEOWER_PASSWORD = dotenv_values()["meower_password"]
 REVOLT_TOKEN = dotenv_values()["revolt_token"]
 LINK_SHORTENER_KEY = dotenv_values()["url_shortener_token"]
+
+
+REVOLT_EMOJI = re.compile(r"\:[A-Z0-9]+\:")
 
 DATABASE = pymongo.MongoClient(dotenv_values().get(
     "mongo_url", "mongodb://localhost:27017"))["revolt-meower"]
@@ -61,7 +65,7 @@ async def send_revolt_message(message: Post, chat_id: str, pfp):
         pass
 
 @cached(PFPEXISTS)
-async def pfp_uri(pfp: int) -> str:
+async def pfp_uri(pfp: str) -> str:
     # https://showierdata9978.github.io/Revower/pfps/{user['pfp']}
     if type(pfp) == str:
         pfp = pfp.strip() #type: ignore
@@ -101,7 +105,7 @@ def get_user_pfp_sync(username: str) -> str:
 
 
 @cached_sync(User_pfp)
-def pfp_uri_sync(pfp: int) -> str:
+def pfp_uri_sync(pfp: str) -> str:
     if type(pfp) == str:
         pfp = pfp.strip() #type: ignore
     resp = requests.get(
@@ -135,13 +139,12 @@ def handle_raw(packet, *args, **kwargs):
 
     chat['info'] = packet['val']['payload']
 
-    if chat['info']['owner'] == chat['user'] and not BYPASS_CHAT_LINKING:
+    if chat['info']['owner'] != chat['user'] and not BYPASS_CHAT_LINKING:
         MEOWER.send_msg(
             "You dont have perms to link this groupchat", to=packet['val']['payload']['chatid'])
         return
 
     # link the chats
-    print(type(chat['revolt_chat'].id))
     DATABASE.chats.insert_one(
         {"meower_chat": chat["meower_chat"], "revolt_chat": str(chat['revolt_chat'].id)})
 
@@ -305,7 +308,7 @@ async def on_message(message: Message):
             
             await message.channel.send(content=f"Failed to ban {user}")
 
-
+    if message.content.startswith("!!"): return
 
     # check if the message is in a known revolt channel
     db_chat = DATABASE.chats.find_one({"revolt_chat": message.channel.id})
@@ -378,6 +381,35 @@ async def on_message(message: Message):
             else:
                 content = f"[{attachment.filename}: {attachment.url}] {content}"
 
+    emojis = re.findall(REVOLT_EMOJI, message.content)
+    emoji: str = ""
+    for emoji in emojis:
+        emoji = emoji.replace(":", "")
+        try:
+            em = message.server.get_emoji(emoji)
+
+        except:
+            #try to convert the external emoji to a useable one.
+            em = await revolt.fetch_emoji(emoji_id=emoji)
+            if em is None:
+                continue
+
+            em = revolt_pkg.Emoji(em, state=revolt.state)
+        
+        if em.nsfw: #no nsfw stuff
+            try:
+                await message.add_reaction(":x:")
+            except revolt_pkg.errors.HTTPError:
+                print("Failed to add '❌' reaction")
+            return
+
+        async with aiohttp.request("POST", "https://go.meower.org/submit", json={"link": f"https://autumn.revolt.chat/emojis/{em.id}"}, headers={"Authorization": LINK_SHORTENER_KEY}) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                content = content.replace(f":{em.id}:", f"[{em.name}: {data['full_url']}]")
+            else:
+                content.replace(f":{em.id}:", f"[{em.name}: {f'https://autumn.revolt.chat/emojis/{em.id}'}]")
+
     content = f"{user['meower_username']}: " + content
 
     MEOWER.send_msg(
@@ -417,7 +449,13 @@ class RevoltClient(Client):
         await on_revolt_ready()
 
     async def on_message(self, message: Message):
-        await on_message(message)
+        try:
+            await on_message(message)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
 
 
 MEOWER.callback(on_message_meower, "message")
