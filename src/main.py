@@ -269,6 +269,7 @@ class RevoltCog(commands.Cog):
             {"meower_chat": chat, "revolt_chat": ctx.message.channel.id})
         await ctx.send(content=f"Successfully linked this channel to {chat}!")
         return
+    
 
 class RevoltClient(commands.CommandsClient):
 
@@ -455,6 +456,9 @@ async def main():
         
         while True:
            await revolt.start()
+	   client.user.edit(status="Bridging Meower with Revolt!")
+	   sleep(295)
+	   client.user.edit(status="Restarting...")
 
 
 asyncio.run(main())
