@@ -31,6 +31,8 @@ LINK_SHORTENER_KEY = dotenv_values()["url_shortener_token"]
 
 REVOLT_EMOJI = re.compile(r"\:[A-Z0-9]+\:")
 
+client = revolt.Client()
+
 DATABASE = pymongo.MongoClient(dotenv_values().get(
     "mongo_url", "mongodb://localhost:27017"))["revolt-meower"]
 
