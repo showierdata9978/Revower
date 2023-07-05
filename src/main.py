@@ -455,10 +455,10 @@ async def main():
         threading.Thread(target=meower_main).start()
         
         while True:
-           await revolt.start()
-	   client.user.edit(status="Bridging Meower with Revolt!")
-	   sleep(295)
-	   client.user.edit(status="Restarting...")
+        await revolt.start()
+	client.user.edit(status="Bridging Meower with Revolt!")
+	sleep(295)
+	client.user.edit(status="Restarting...")
 
 
 asyncio.run(main())
