@@ -457,9 +457,9 @@ async def main():
         while True:
           await revolt.start()
           sleep(15)
-          client.user.edit(status="Bridging Meower with Revolt!")
+          await client.user.edit(status="Bridging Meower with Revolt!")
           sleep(295)
-          client.user.edit(status="Restarting...")
+          await client.user.edit(status="Restarting...")
 
 
 asyncio.run(main())
