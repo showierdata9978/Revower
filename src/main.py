@@ -456,7 +456,7 @@ async def main():
         
         while True:
           await revolt.start()
-          sleep(5)
+          sleep(15)
           client.user.edit(status="Bridging Meower with Revolt!")
           sleep(295)
           client.user.edit(status="Restarting...")
