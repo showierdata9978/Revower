@@ -108,7 +108,7 @@ def handle_raw(packet, *args, **kwargs):
 
     if chat['info']['owner'] != chat['user'] and not BYPASS_CHAT_LINKING:
         MEOWER.send_msg(
-            "You dont have perms to link this groupchat", to=packet['val']['payload']['chatid'])
+            "Whoops! Looks like you don't have permission to link this group chat :(", to=packet['val']['payload']['chatid'])
         return
 
     # link the chats
@@ -124,19 +124,19 @@ def handle_raw(packet, *args, **kwargs):
 @MEOWER.command()
 def account(ctx, revolt_user):
     if revolt_user not in LINKING_USERS:
-        message.ctx.reply("You are not linking a revolt account")
+        message.ctx.reply("You are not linking a Revolt account to your Meower account")
         return
 
     # check if the revolt user is the same as the one that started the linking
     if LINKING_USERS[revolt_user]['meower_username'] != ctx.user.username:
-        message.ctx.reply("You are not linking your revolt account")
+        message.ctx.reply("You are not linking your Revolt account to your Meower account")
         return
 
     # insert the user into the database
     DATABASE.users.insert_one(
         {"meower_username": ctx.user.username, "revolt_user": revolt_user, "pfp": get_user_pfp(LINKING_USERS[revolt_user]['meower_username'])})
     
-    ctx.reply("Successfully linked your revolt account")
+    ctx.reply("Successfully linked your Revolt account to your Meower account!")
 
     # remove the user from the linking users
     LINKING_USERS.pop(revolt_user)
@@ -146,14 +146,14 @@ def link(ctx, revolt_chat: str):
     chat_id = ctx.message.chat
 
     if chat_id not in LINKING_CHATS:
-        message.ctx.reply("You are not linking a revolt channel")
+        message.ctx.reply("You are not linking a Revolt channel")
         return
 
     # check if the revolt user is the same as the one that started the linking, and has permission to link the channel (ie. owns the chat)
     chat_linking = LINKING_CHATS[chat_id]
     if chat_linking['meower_chat'] != ctx.message.chat:
         message.ctx.reply(
-            "Please run the command in the gc you want to link")
+            "Please run that command in the group chat you're trying to link!")
         return
 
     LINKING_CHATS[chat_id]['user'] = ctx.user.username
@@ -218,7 +218,7 @@ class RevoltCog(commands.Cog):
         role = ctx.server.get_role("01GRR3PQES9SMJFNQSMFZNCDAH")
 
         if role not in ctx.author.roles:
-            await ctx.send(f"{ctx.author.mention} You dont have perms to ban users")
+            await ctx.send(f"{ctx.author.mention} You don't have permission to ban users from Revower!")
             return
 
         if ban_user(meower_username):
@@ -234,7 +234,7 @@ class RevoltCog(commands.Cog):
             user = DATABASE.users.find_one({"meower_username": muser})
 
         if user is not None and user.get("banned", False):
-            await ctx.send(content="You are banned from using this bot")
+            await ctx.send(content="Whoops! Looks like you're banned from Revower :(")
             return
         
 
@@ -245,7 +245,7 @@ class RevoltCog(commands.Cog):
             "revolt_chat": ctx.message.channel.id
         }
 
-        await ctx.send(content=f"Please send @{MEOWER_USERNAME} account {ctx.message.author.id} to livechat")
+        await ctx.send(content=f"Please send `@{MEOWER_USERNAME} account {ctx.message.author.id}` to either Meower Home or Livechat")
         return
 
     @commands.command()
@@ -261,13 +261,13 @@ class RevoltCog(commands.Cog):
                 "revolt_chat": ctx.channel,
                 "chat_info": None
             }
-            await ctx.send(content=f"Please send @{MEOWER_USERNAME} link {ctx.channel.id} to the specified chat")
+            await ctx.send(content=f"Please send `@{MEOWER_USERNAME} link {ctx.channel.id}` to the specified group chat")
             return
 
         # add the chat to the database
         DATABASE.chats.insert_one(
             {"meower_chat": chat, "revolt_chat": ctx.message.channel.id})
-        await ctx.send(content=f"Successfully linked this channel to {chat}")
+        await ctx.send(content=f"Successfully linked this channel to {chat}!")
         return
 
 class RevoltClient(commands.CommandsClient):
