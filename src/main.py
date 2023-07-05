@@ -280,7 +280,7 @@ class RevoltClient(commands.CommandsClient):
     
     async def on_ready(self):
         print("Revolt bot is ready")
-        await self.bot.client.edit_user(status="Bridging Meower with Revolt!")
+        await client.set_status(status="Bridging Meower with Revolt!")
 
     async def get_prefix(self, message):
         return f"{self.user.mention}"
