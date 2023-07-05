@@ -31,8 +31,6 @@ LINK_SHORTENER_KEY = dotenv_values()["url_shortener_token"]
 
 REVOLT_EMOJI = re.compile(r"\:[A-Z0-9]+\:")
 
-client = revolt.Client()
-
 DATABASE = pymongo.MongoClient(dotenv_values().get(
     "mongo_url", "mongodb://localhost:27017"))["revolt-meower"]
 
@@ -282,7 +280,6 @@ class RevoltClient(commands.CommandsClient):
     
     async def on_ready(self):
         print("Revolt bot is ready")
-        await client.set_status(status="Bridging Meower with Revolt!")
 
     async def get_prefix(self, message):
         return f"{self.user.mention}"
